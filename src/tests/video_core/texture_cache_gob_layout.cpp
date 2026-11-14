@@ -111,6 +111,10 @@ struct TextureCacheTestAccess {
         return cache.FindImage(info, gpu_addr, RelaxedOptions{});
     }
     template <class C>
+    static void MarkGpuModified(C& cache, ImageId id) {
+        cache.slot_images[id].flags |= ImageFlagBits::GpuModified;
+    }
+    template <class C>
     static const ImageInfo& Info(C& cache, ImageId id) {
         return cache.slot_images[id].info;
     }
@@ -207,4 +211,23 @@ TEST_CASE("FindImage keeps GOB and native tiling images apart at one address",
     // With both cached, each descriptor resolves only to its own layout.
     CHECK(Access::Find(*f.cache, native, gpu_addr) == native_id);
     CHECK(Access::Find(*f.cache, gob, gpu_addr) == gob_id);
+}
+TEST_CASE("FindImage reuses a GPU-written image whatever GOB order the descriptor asks for",
+          "[video_core][texture_cache][gob_layout]") {
+    Fixture f;
+    constexpr GPUVAddr gpu_addr = 0x100000;
+    constexpr DAddr cpu_addr = 0x10000;
+
+    auto gob = MakeInfo();
+    gob.maxwell_gob_layout = true;
+    auto native = MakeInfo();
+    native.native_tiling = true;
+
+    // A render target (native order) that the game samples through a GOB-order descriptor.
+    const auto target_id = Access::Insert(*f.cache, native, gpu_addr, cpu_addr);
+    REQUIRE(target_id != VideoCommon::ImageId{});
+    CHECK(Access::Find(*f.cache, gob, gpu_addr) == VideoCommon::ImageId{});
+    Access::MarkGpuModified(*f.cache, target_id);
+    CHECK(Access::Find(*f.cache, gob, gpu_addr) == target_id);
+    CHECK(Access::Find(*f.cache, native, gpu_addr) == target_id);
 }

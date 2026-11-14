@@ -2819,7 +2819,11 @@ ImageId TextureCache<P>::FindImage(const ImageInfo& info, GPUVAddr gpu_addr,
                 image_ids.push_back(existing_image_id);
                 return !flexible_formats && existing.format == info.format;
             }
-        } else if (existing_image.info.native_tiling == native_tiling &&
+        } else if ((existing_image.info.native_tiling == native_tiling ||
+                    // A GPU-written image's contents never came from its guest tiling. Xenoblade
+                    // Chronicles 2 samples its render targets through GOB-order descriptors, and
+                    // refusing them recreated about 10,000 images a second.
+                    True(existing_image.flags & ImageFlagBits::GpuModified)) &&
                    IsSubresource(info, existing_image, gpu_addr, options, broken_views,
                                  native_bgr)) {
             image_id = existing_image_id;
